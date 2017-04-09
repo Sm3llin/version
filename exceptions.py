@@ -1,0 +1,2 @@
+class VersionLockedError(Exception):
+    pass
