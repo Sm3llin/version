@@ -11,6 +11,8 @@ class VersionControl(object):
     __pickling = False
 
     def __init__(self, version=Version()):
+        version._objects.append(self)
+
         self.__version = version
         self.version._built = True
 
@@ -18,9 +20,10 @@ class VersionControl(object):
         return self.version.max + 1
 
     def __getitem__(self, item):
-        if item >= len(self):
+        if item >= len(self) - 1:
+            self.version.switch(self.version.max)
             raise IndexError
-        self.__version.switch(item)
+        self.__version.switch(item + 1)
         return self
 
     def __setattr__(self, key, value):
@@ -37,7 +40,7 @@ class VersionControl(object):
         if key not in object.__getattribute__(self, '__dict__'):
             object.__getattribute__(self, '_VersionControl__controlled_objects').append(key)
 
-            control_value = [type(value)() for _ in range(len(version)+1)]
+            control_value = [None for _ in range(len(version)+1)]
             control_value[version.current] = value
 
             object.__getattribute__(self, '__dict__')[key] = control_value
@@ -61,13 +64,21 @@ class VersionControl(object):
             object.__getattribute__(self, '_VersionControl__controlled_objects').append(key)
             object.__getattribute__(self, '__dict__')[key] = value
 
-    def create_next(self):
-        print(f'Current Version: {self.version.max}')
+    """ Version Control Logic """
 
-        for key, value in self.__dict__.items():
-            if '__version' not in key:
-                self.__dict__[key].append(value[self.version.max])
+    def create_next(self):
         self.__version.create_next()
+
+    @property
+    def version(self):
+        return self.__version
+
+    @property
+    def previous(self):
+        """ Returns an object which has a dict of the previous versions data for lookup """
+        return VersionInfoFinder(self, self.version.previous)
+
+    """ Object Pickling """
 
     def save(self):
         self.__pickling = True
@@ -89,6 +100,28 @@ class VersionControl(object):
     def _finish_load(self):
         self.__pickling = False
 
-    @property
-    def version(self):
-        return self.__version
+
+class VersionInfoFinder(object):
+    def __init__(self, version_object, version):
+        self.__filter = list()
+        self.__version = version
+
+        self.__title = "%r" % version_object
+
+        for key, values in version_object.__dict__.items():
+            self.__filter.append(key)
+            self.__dict__[key] = values
+
+    def __getitem__(self, item):
+        try:
+            return self.__dict__[item][self.__version]
+        except IndexError:
+            return None
+
+    def __getattribute__(self, item):
+        if item not in object.__getattribute__(self, '_VersionInfoFinder__filter'):
+            return object.__getattribute__(self, item)
+        return object.__getattribute__(self, item)[object.__getattribute__(self, '_VersionInfoFinder__version')]
+
+    def __repr__(self):
+        return '<Info %s>' % self.__title
